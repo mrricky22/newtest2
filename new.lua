@@ -279,7 +279,7 @@ local function main()
                             logToFile("Player: " .. playerName .. " | Bounty: " .. bountyText)
                             
                             -- Track if we found any high bounties
-                            if amount and amount > 15000 then
+                            if amount and amount > 10000 then
                                 logToFile("*** HIGH BOUNTY FOUND *** Player=" .. playerName .. " | Bounty=" .. bountyText)
                                 foundHighBounty = true
                                 -- Note: Not returning early, continuing to check all bounties
@@ -360,5 +360,4 @@ end)
 -- Fallback in case the entire script fails
 pcall(function()
     logToFile("Script execution completed or failed. Ensuring queue_on_teleport is set.")
-    queue_on_teleport(scriptToRun)
 end)
