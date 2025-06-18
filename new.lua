@@ -1,5 +1,6 @@
 local HttpService = game:GetService("HttpService")
 local TeleportService = game:GetService("TeleportService")
+local Players = game:GetService("Players")
 
 -- Discord webhook URL
 local webhookUrl = "https://discord.com/api/webhooks/1384910804377141338/PYYqx9758hsp5r3H88andR5dj4xAQ_LI517F5VbRpYAvEF7kqDF1rndYJURVR26tsXBr"
@@ -33,8 +34,8 @@ local function sendWebhook(message)
     end
 end
 
--- Function to get a random server
-local function getRandomServer()
+-- Function to get a list of servers
+local function getServerList()
     local url = "https://games.roblox.com/v1/games/606849621/servers/Public?limit=100&sortOrder=Desc&excludeFullGames=true"
     local requestOptions = {
         Url = url,
@@ -47,15 +48,43 @@ local function getRandomServer()
     
     if success and response.Success then
         local data = HttpService:JSONDecode(response.Body)
-        local servers = data.data
-        if #servers > 0 then
-            local randomIndex = math.random(1, #servers)
-            return servers[randomIndex].id
-        end
+        return data.data or {}
     else
         warn("Failed to fetch servers: " .. tostring(response))
     end
-    return nil
+    return {}
+end
+
+-- Function to attempt teleporting to a server
+local function attemptTeleport(serverId)
+    local success, errorMsg = pcall(function()
+        queue_on_teleport(scriptToRun)
+        TeleportService:TeleportToPlaceInstance(606849621, serverId, Players.LocalPlayer)
+    end)
+    
+    if not success then
+        warn("Teleport attempt failed: " .. tostring(errorMsg))
+        return false
+    end
+    return true
+end
+
+-- Function to get a random server from the list
+local function getRandomServer(servers, excludeJobId)
+    if #servers == 0 then
+        return nil
+    end
+    local validServers = {}
+    for _, server in ipairs(servers) do
+        if server.id ~= excludeJobId then
+            table.insert(validServers, server)
+        end
+    end
+    if #validServers == 0 then
+        return nil
+    end
+    local randomIndex = math.random(1, #validServers)
+    return validServers[randomIndex].id
 end
 
 -- Main logic
@@ -79,15 +108,38 @@ local function checkWorkspaceAndAct()
         sendWebhook(message)
     end
     
-    -- Hop to a random server regardless of findings
-    local serverId = getRandomServer()
+    -- Fetch server list and hop to a random server
+    local servers = getServerList()
+    local serverId = getRandomServer(servers, game.JobId)
     if serverId then
-        queue_on_teleport(scriptToRun)
-        TeleportService:TeleportToPlaceInstance(606849621, serverId)
+        attemptTeleport(serverId)
     else
         warn("No available servers found.")
     end
 end
+
+-- Handle teleport failures
+TeleportService.TeleportInitFailed:Connect(function(player, teleportResult, errorMessage)
+    if player == Players.LocalPlayer then
+        warn("Teleport failed: " .. teleportResult.Name .. " - " .. tostring(errorMessage))
+        
+        -- Fetch a new server list
+        local servers = getServerList()
+        local serverId = getRandomServer(servers, game.JobId)
+        
+        if serverId then
+            warn("Attempting to join another server: " .. serverId)
+            attemptTeleport(serverId)
+        else
+            warn("No alternative servers available after teleport failure.")
+            -- Fallback to default teleport
+            pcall(function()
+                queue_on_teleport(scriptToRun)
+                TeleportService:Teleport(606849621, Players.LocalPlayer)
+            end)
+        end
+    end
+end)
 
 -- Execute the main logic
 checkWorkspaceAndAct()
