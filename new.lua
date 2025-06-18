@@ -7,7 +7,6 @@ local webhookUrl = "https://discord.com/api/webhooks/1384910804377141338/PYYqx97
 -- Script to run after teleport
 local scriptToRun = [[
     -- Wait until the game is fully loaded
-    game.Loaded:Wait()
     wait(10)
     loadstring(game:HttpGet("https://raw.githubusercontent.com/mrricky22/newtest2/refs/heads/main/new.lua"))()
 ]]
@@ -70,14 +69,16 @@ local function checkWorkspaceAndAct()
         end
     end
     
-    -- Send webhook with count of drops found
-    local message = string.format(
-        "Found %d airdrop(s) in server: https://fern.wtf/joiner?placeId=606849621&gameInstanceId=%s",
-        dropCount,
-        game.JobId
-    )
-    sendWebhook(message)
-    print("Ok")
+    -- Send webhook only if drops are found
+    if dropCount > 0 then
+        local message = string.format(
+            "Found %d airdrop(s) in server: https://fern.wtf/joiner?placeId=606849621&gameInstanceId=%s",
+            dropCount,
+            game.JobId
+        )
+        sendWebhook(message)
+    end
+    
     -- Hop to a random server regardless of findings
     local serverId = getRandomServer()
     if serverId then
