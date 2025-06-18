@@ -1,7 +1,7 @@
 local HttpService = game:GetService("HttpService")
 local TeleportService = game:GetService("TeleportService")
 
--- Discord webhook URL (replace with your actual webhook URL)
+-- Discord webhook URL
 local webhookUrl = "https://discord.com/api/webhooks/1384910804377141338/PYYqx9758hsp5r3H88andR5dj4xAQ_LI517F5VbRpYAvEF7kqDF1rndYJURVR26tsXBr"
 
 -- Script to run after teleport
@@ -25,7 +25,7 @@ local function sendWebhook(message)
     }
     
     local success, response = pcall(function()
-        return HttpService:RequestAsync(requestOptions)
+        return request(requestOptions)
     end)
     
     if not success then
@@ -36,12 +36,17 @@ end
 -- Function to get a random server
 local function getRandomServer()
     local url = "https://games.roblox.com/v1/games/606849621/servers/Public?limit=100&sortOrder=Desc&excludeFullGames=true"
+    local requestOptions = {
+        Url = url,
+        Method = "GET"
+    }
+    
     local success, response = pcall(function()
-        return HttpService:GetAsync(url)
+        return request(requestOptions)
     end)
     
-    if success then
-        local data = HttpService:JSONDecode(response)
+    if success and response.Success then
+        local data = HttpService:JSONDecode(response.Body)
         local servers = data.data
         if #servers > 0 then
             local randomIndex = math.random(1, #servers)
