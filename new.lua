@@ -60,30 +60,30 @@ end
 
 -- Main logic
 local function checkWorkspaceAndAct()
-    local found = false
+    local dropCount = 0
     
-    -- Search workspace for "Drop" with "Walls" child
+    -- Search workspace for "Drop" with "Walls" child and count instances
     for _, child in ipairs(workspace:GetChildren()) do
         if child.Name == "Drop" and child:FindFirstChild("Walls") then
-            found = true
-            local message = string.format(
-                "https://fern.wtf/joiner?placeId=606849621&gameInstanceId=%s",
-                game.JobId
-            )
-            sendWebhook(message)
-            break
+            dropCount = dropCount + 1
         end
     end
     
-    -- If not found, hop to a random server
-    if not found then
-        local serverId = getRandomServer()
-        if serverId then
-            queue_on_teleport(scriptToRun)
-            TeleportService:TeleportToPlaceInstance(606849621, serverId)
-        else
-            warn("No available servers found.")
-        end
+    -- Send webhook with count of drops found
+    local message = string.format(
+        "Found %d airdrop(s) in server: https://fern.wtf/joiner?placeId=606849621&gameInstanceId=%s",
+        dropCount,
+        game.JobId
+    )
+    sendWebhook(message)
+    
+    -- Hop to a random server regardless of findings
+    local serverId = getRandomServer()
+    if serverId then
+        queue_on_teleport(scriptToRun)
+        TeleportService:TeleportToPlaceInstance(606849621, serverId)
+    else
+        warn("No available servers found.")
     end
 end
 
