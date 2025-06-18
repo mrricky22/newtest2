@@ -12,6 +12,9 @@ local scriptToRun = [[
     loadstring(game:HttpGet("https://raw.githubusercontent.com/mrricky22/newtest2/refs/heads/main/new.lua"))()
 ]]
 
+-- File path for caching server list
+local serverCacheFile = "server_list.json"
+
 -- Function to send Discord webhook
 local function sendWebhook(message)
     local requestOptions = {
@@ -57,12 +60,10 @@ local function getServerList(cursor)
             local data = HttpService:JSONDecode(response.Body)
             if data.data then
                 for _, server in ipairs(data.data) do
-                    -- Only include servers with enough open slots (e.g., at least 2 slots)
                     if server.playing < server.maxPlayers - 1 then
                         table.insert(servers, server)
                     end
-                end
-                -- If there's a next page and we need more servers, recurse
+                }
                 if data.nextPageCursor and #servers < 10 then
                     local moreServers = getServerList(data.nextPageCursor)
                     for _, server in ipairs(moreServers) do
@@ -76,11 +77,55 @@ local function getServerList(cursor)
         else
             warn("Failed to fetch servers (attempt " .. i .. "/" .. retries .. "): " .. tostring(response))
             if i < retries then
-                wait(2) -- Wait before retrying
+                wait(2)
             end
         end
     end
     return {}
+end
+
+-- Function to load servers from cache or fetch new ones
+local function loadServers()
+    local servers = {}
+    
+    -- Check if cache file exists
+    local success, fileContent = pcall(function()
+        return readfile(serverCacheFile)
+    end)
+    
+    if success then
+        -- Try to decode cached server list
+        local decodeSuccess, cachedServers = pcall(function()
+            return HttpService:JSONDecode(fileContent)
+        end)
+        
+        if decodeSuccess and cachedServers then
+            warn("Loaded " .. #cachedServers .. " servers from cache")
+            return cachedServers
+        else
+            warn("Failed to decode cached server list, fetching new servers")
+        end
+    end
+    
+    -- Fetch new servers if cache doesn't exist or is invalid
+    servers = getServerList()
+    warn("Fetched " .. #servers .. " new servers")
+    
+    -- Save servers to cache
+    local encodeSuccess, encodedServers = pcall(function()
+        return HttpService:JSONEncode(servers)
+    end)
+    
+    if encodeSuccess then
+        pcall(function()
+            writefile(serverCacheFile, encodedServers)
+            warn("Saved server list to cache")
+        end)
+    else
+        warn("Failed to encode server list for caching")
+    end
+    
+    return servers
 end
 
 -- Function to attempt teleporting to a server
@@ -121,14 +166,12 @@ end
 local function checkWorkspaceAndAct()
     local dropCount = 0
     
-    -- Search workspace for "Drop" with "Walls" child and count instances
     for _, child in ipairs(workspace:GetChildren()) do
         if child.Name == "Drop" and child:FindFirstChild("Walls") then
             dropCount = dropCount + 1
         end
     end
     
-    -- Send webhook only if drops are found
     if dropCount > 0 then
         local message = string.format(
             "Found %d airdrop(s) in server: https://fern.wtf/joiner?placeId=606849621&gameInstanceId=%s",
@@ -138,9 +181,9 @@ local function checkWorkspaceAndAct()
         sendWebhook(message)
     end
     
-    -- Fetch server list and hop to a random server
-    local servers = getServerList()
-    warn("Fetched " .. #servers .. " servers")
+    -- Load servers from cache or fetch new ones
+    local servers = loadServers()
+    warn("Loaded " .. #servers .. " servers")
     local serverId = getRandomServer(servers, game.JobId)
     if serverId then
         warn("Attempting to teleport to server: " .. serverId)
@@ -155,9 +198,9 @@ TeleportService.TeleportInitFailed:Connect(function(player, teleportResult, erro
     if player == Players.LocalPlayer then
         warn("Teleport failed: " .. teleportResult.Name .. " - " .. tostring(errorMessage))
         
-        -- Fetch a new server list
-        local servers = getServerList()
-        warn("Fetched " .. #servers .. " servers after teleport failure")
+        -- Load servers from cache or fetch new ones
+        local servers = loadServers()
+        warn("Loaded " .. #servers .. " servers after teleport failure")
         local serverId = getRandomServer(servers, game.JobId)
         
         if serverId then
@@ -165,7 +208,6 @@ TeleportService.TeleportInitFailed:Connect(function(player, teleportResult, erro
             attemptTeleport(serverId)
         else
             warn("No alternative servers available after teleport failure. Server list size: " .. #servers)
-            -- Fallback to default teleport
             pcall(function()
                 queue_on_teleport(scriptToRun)
                 TeleportService:Teleport(606849621, Players.LocalPlayer)
