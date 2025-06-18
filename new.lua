@@ -77,7 +77,7 @@ local function checkWorkspaceAndAct()
         game.JobId
     )
     sendWebhook(message)
-    
+    print("Ok")
     -- Hop to a random server regardless of findings
     local serverId = getRandomServer()
     if serverId then
