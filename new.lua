@@ -34,23 +34,51 @@ local function sendWebhook(message)
     end
 end
 
--- Function to get a list of servers
-local function getServerList()
+-- Function to get a list of servers, with pagination support
+local function getServerList(cursor)
+    local servers = {}
     local url = "https://games.roblox.com/v1/games/606849621/servers/Public?limit=100&sortOrder=Desc&excludeFullGames=true"
+    if cursor then
+        url = url .. "&cursor=" .. cursor
+    end
+    
     local requestOptions = {
         Url = url,
         Method = "GET"
     }
     
-    local success, response = pcall(function()
-        return request(requestOptions)
-    end)
-    
-    if success and response.Success then
-        local data = HttpService:JSONDecode(response.Body)
-        return data.data or {}
-    else
-        warn("Failed to fetch servers: " .. tostring(response))
+    local retries = 3
+    for i = 1, retries do
+        local success, response = pcall(function()
+            return request(requestOptions)
+        end)
+        
+        if success and response.Success then
+            local data = HttpService:JSONDecode(response.Body)
+            if data.data then
+                for _, server in ipairs(data.data) do
+                    -- Only include servers with enough open slots (e.g., at least 2 slots)
+                    if server.playing < server.maxPlayers - 1 then
+                        table.insert(servers, server)
+                    end
+                end
+                -- If there's a next page and we need more servers, recurse
+                if data.nextPageCursor and #servers < 10 then
+                    local moreServers = getServerList(data.nextPageCursor)
+                    for _, server in ipairs(moreServers) do
+                        table.insert(servers, server)
+                    end
+                end
+                return servers
+            else
+                warn("Invalid server list response: " .. tostring(response.Body))
+            end
+        else
+            warn("Failed to fetch servers (attempt " .. i .. "/" .. retries .. "): " .. tostring(response))
+            if i < retries then
+                wait(2) -- Wait before retrying
+            end
+        end
     end
     return {}
 end
@@ -72,6 +100,7 @@ end
 -- Function to get a random server from the list
 local function getRandomServer(servers, excludeJobId)
     if #servers == 0 then
+        warn("No servers provided to getRandomServer")
         return nil
     end
     local validServers = {}
@@ -81,6 +110,7 @@ local function getRandomServer(servers, excludeJobId)
         end
     end
     if #validServers == 0 then
+        warn("No valid servers after filtering excludeJobId: " .. tostring(excludeJobId))
         return nil
     end
     local randomIndex = math.random(1, #validServers)
@@ -110,11 +140,13 @@ local function checkWorkspaceAndAct()
     
     -- Fetch server list and hop to a random server
     local servers = getServerList()
+    warn("Fetched " .. #servers .. " servers")
     local serverId = getRandomServer(servers, game.JobId)
     if serverId then
+        warn("Attempting to teleport to server: " .. serverId)
         attemptTeleport(serverId)
     else
-        warn("No available servers found.")
+        warn("No available servers found. Server list size: " .. #servers)
     end
 end
 
@@ -125,13 +157,14 @@ TeleportService.TeleportInitFailed:Connect(function(player, teleportResult, erro
         
         -- Fetch a new server list
         local servers = getServerList()
+        warn("Fetched " .. #servers .. " servers after teleport failure")
         local serverId = getRandomServer(servers, game.JobId)
         
         if serverId then
             warn("Attempting to join another server: " .. serverId)
             attemptTeleport(serverId)
         else
-            warn("No alternative servers available after teleport failure.")
+            warn("No alternative servers available after teleport failure. Server list size: " .. #servers)
             -- Fallback to default teleport
             pcall(function()
                 queue_on_teleport(scriptToRun)
