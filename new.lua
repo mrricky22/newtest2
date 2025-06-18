@@ -74,7 +74,7 @@ local function checkWorkspaceAndAct()
     if not found then
         local serverId = getRandomServer()
         if serverId then
-            TeleportService:QueueOnTeleport(scriptToRun)
+            queue_on_teleport(scriptToRun)
             TeleportService:TeleportToPlaceInstance(606849621, serverId)
         else
             warn("No available servers found.")
