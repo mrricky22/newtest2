@@ -2,23 +2,20 @@ local HttpService = game:GetService("HttpService")
 local TeleportService = game:GetService("TeleportService")
 local Players = game:GetService("Players")
 
--- Discord webhook URL
-local webhookUrl = "https://discord.com/api/webhooks/1384910804377141338/PYYqx9758hsp5r3H88andR5dj4xAQ_LI517F5VbRpYAvEF7kqDF1rndYJURVR26tsXBr"
-
--- Script to run after teleport
-local scriptToRun = [[
+-- Constants
+local PLACE_ID = 606849621
+local WEBHOOK_URL = "https://discord.com/api/webhooks/1384910804377141338/PYYqx9758hsp5r3H88andR5dj4xAQ_LI517F5VbRpYAvEF7kqDF1rndYJURVR26tsXBr"
+local SERVER_CACHE_FILE = "server_list.json"
+local SCRIPT_TO_RUN = [[
     -- Wait until the game is fully loaded
     wait(10)
     loadstring(game:HttpGet("https://raw.githubusercontent.com/mrricky22/newtest2/refs/heads/main/new.lua"))()
 ]]
 
--- File path for caching server list
-local serverCacheFile = "server_list.json"
-
 -- Function to send Discord webhook
 local function sendWebhook(message)
     local requestOptions = {
-        Url = webhookUrl,
+        Url = WEBHOOK_URL,
         Method = "POST",
         Headers = {
             ["Content-Type"] = "application/json"
@@ -32,40 +29,43 @@ local function sendWebhook(message)
         return request(requestOptions)
     end)
     
-    if not success then
+    if success and response.StatusCode == 204 then
+        warn("Webhook sent successfully")
+    else
         warn("Failed to send webhook: " .. tostring(response))
     end
 end
 
 -- Function to get a list of servers, with pagination support
-local function getServerList(cursor)
-    local servers = {}
-    local url = "https://games.roblox.com/v1/games/606849621/servers/Public?limit=100&sortOrder=Desc&excludeFullGames=true"
-    if cursor then
-        url = url .. "&cursor=" .. cursor
+local function getServerList(cursor, recursionDepth)
+    recursionDepth = recursionDepth or 0
+    if recursionDepth > 5 then -- Prevent infinite recursion
+        warn("Max recursion depth reached in getServerList")
+        return {}
     end
-    
-    local requestOptions = {
-        Url = url,
-        Method = "GET"
-    }
+
+    local servers = {}
+    local url = string.format("https://games.roblox.com/v1/games/%d/servers/Public?limit=100&sortOrder=Desc&excludeFullGames=true", PLACE_ID)
+    if cursor then
+        url = url .. "&cursor=" .. HttpService:UrlEncode(cursor)
+    end
     
     local retries = 3
     for i = 1, retries do
         local success, response = pcall(function()
-            return request(requestOptions)
+            return request({ Url = url, Method = "GET" })
         end)
         
-        if success and response.Success then
+        if success and response.Success and response.Body then
             local data = HttpService:JSONDecode(response.Body)
-            if data.data then
+            if data and data.data then
                 for _, server in ipairs(data.data) do
-                    if server.playing < server.maxPlayers - 1 then
+                    if server.playing and server.maxPlayers and server.playing < server.maxPlayers - 1 then
                         table.insert(servers, server)
                     end
-                }
+                end
                 if data.nextPageCursor and #servers < 10 then
-                    local moreServers = getServerList(data.nextPageCursor)
+                    local moreServers = getServerList(data.nextPageCursor, recursionDepth + 1)
                     for _, server in ipairs(moreServers) do
                         table.insert(servers, server)
                     end
@@ -90,11 +90,10 @@ local function loadServers()
     
     -- Check if cache file exists
     local success, fileContent = pcall(function()
-        return readfile(serverCacheFile)
+        return readfile(SERVER_CACHE_FILE)
     end)
     
-    if success then
-        -- Try to decode cached server list
+    if success and fileContent then
         local decodeSuccess, cachedServers = pcall(function()
             return HttpService:JSONDecode(fileContent)
         end)
@@ -118,7 +117,7 @@ local function loadServers()
     
     if encodeSuccess then
         pcall(function()
-            writefile(serverCacheFile, encodedServers)
+            writefile(SERVER_CACHE_FILE, encodedServers)
             warn("Saved server list to cache")
         end)
     else
@@ -131,8 +130,8 @@ end
 -- Function to attempt teleporting to a server
 local function attemptTeleport(serverId)
     local success, errorMsg = pcall(function()
-        queue_on_teleport(scriptToRun)
-        TeleportService:TeleportToPlaceInstance(606849621, serverId, Players.LocalPlayer)
+        queue_on_teleport(SCRIPT_TO_RUN)
+        TeleportService:TeleportToPlaceInstance(PLACE_ID, serverId, Players.LocalPlayer)
     end)
     
     if not success then
@@ -150,7 +149,7 @@ local function getRandomServer(servers, excludeJobId)
     end
     local validServers = {}
     for _, server in ipairs(servers) do
-        if server.id ~= excludeJobId then
+        if server.id and server.id ~= excludeJobId then
             table.insert(validServers, server)
         end
     end
@@ -158,6 +157,7 @@ local function getRandomServer(servers, excludeJobId)
         warn("No valid servers after filtering excludeJobId: " .. tostring(excludeJobId))
         return nil
     end
+    math.randomseed(tick()) -- Seed for better randomness
     local randomIndex = math.random(1, #validServers)
     return validServers[randomIndex].id
 end
@@ -174,8 +174,9 @@ local function checkWorkspaceAndAct()
     
     if dropCount > 0 then
         local message = string.format(
-            "Found %d airdrop(s) in server: https://fern.wtf/joiner?placeId=606849621&gameInstanceId=%s",
+            "Found %d airdrop(s) in server: https://fern.wtf/joiner?placeId=%d&gameInstanceId=%s",
             dropCount,
+            PLACE_ID,
             game.JobId
         )
         sendWebhook(message)
@@ -209,8 +210,8 @@ TeleportService.TeleportInitFailed:Connect(function(player, teleportResult, erro
         else
             warn("No alternative servers available after teleport failure. Server list size: " .. #servers)
             pcall(function()
-                queue_on_teleport(scriptToRun)
-                TeleportService:Teleport(606849621, Players.LocalPlayer)
+                queue_on_teleport(SCRIPT_TO_RUN)
+                TeleportService:Teleport(PLACE_ID, Players.LocalPlayer)
             end)
         end
     end
